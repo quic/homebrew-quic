@@ -1,0 +1,53 @@
+name: Install formulae
+
+on:
+  pull_request:
+    branches: [ main ]
+
+env:
+  HOMEBREW_NO_ANALYTICS: 1
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+
+jobs:
+  install-formulae:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-12]
+    runs-on: ${{ matrix.os }}
+    env:
+      HOMEBREW_FORCE_VENDOR_RUBY: 1
+    steps:
+      - name: Activate Homebrew
+        if: runner.os == 'Linux'
+        run: echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Cache Homebrew Bundler RubyGems
+        id: cache
+        uses: actions/cache@v1
+        with:
+          path: ${{ steps.set-up-homebrew.outputs.gems-path }}
+          key: ${{ runner.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
+          restore-keys: ${{ runner.os }}-rubygems-
+
+      - name: Install Homebrew Bundler RubyGems
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: brew install-bundler-gems
+
+      - name: Cleanup
+        run: brew test-bot --only-cleanup-before
+
+      - name: Setup
+        run: brew test-bot --only-setup
+
+      - name: Syntax check
+        run: brew test-bot --only-tap-syntax
+        continue-on-error: true
+
+      - name: Install formulae
+        run: brew test-bot --only-formulae
