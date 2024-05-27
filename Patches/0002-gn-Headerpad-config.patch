@@ -1,0 +1,58 @@
+From 60e4ddc20c55b872c05892553000074efda0ecd7 Mon Sep 17 00:00:00 2001
+From: Antonio Caggiano <quic_acaggian@quicinc.com>
+Date: Tue, 28 May 2024 16:35:28 +0200
+Subject: [PATCH] gn: Headerpad config
+
+Use -headerpad_max_install_names in the build, otherwise updated load
+commands won't fit in Mach-O header. This is a requirement for
+generating a bottle for homebrew.
+
+Change-Id: I5c82d03e21f9e5b1adc1c9dba571634132d32276
+---
+ BUILD.gn | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/BUILD.gn b/BUILD.gn
+index 4a0029b7a..f242f5c4b 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -607,6 +607,12 @@ config("angle_gl_visibility_config") {
+   }
+ }
+ 
++config("headerpad_config") {
++  if (is_mac) {
++    ldflags = [ "-headerpad_max_install_names" ]
++  }
++}
++
+ config("angle_vulkan_wayland_config") {
+   if (angle_enable_vulkan && angle_use_wayland &&
+       defined(vulkan_wayland_include_dirs)) {
+@@ -1432,6 +1438,7 @@ template("angle_libGLESv2") {
+       ":angle_gl_visibility_config",
+       ":debug_annotations_config",
+       ":gl_prototypes",
++      ":headerpad_config",
+     ]
+ 
+     if (angle_enable_gl_desktop_frontend) {
+@@ -1559,6 +1566,7 @@ angle_shared_library("libGLESv1_CM") {
+     ":angle_gl_visibility_config",
+     ":debug_annotations_config",
+     ":gl_prototypes",
++    ":headerpad_config",
+   ]
+ 
+   defines = []
+@@ -1605,6 +1613,7 @@ template("libEGL_template") {
+     configs += [
+       ":debug_annotations_config",
+       ":library_name_config",
++      ":headerpad_config",
+     ]
+     deps += [ ":includes" ]
+   }
+-- 
+2.45.1
+
