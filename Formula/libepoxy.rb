@@ -1,23 +1,22 @@
-# Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+# Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-2-Clause
 
 class Libepoxy < Formula
   desc "Library for handling OpenGL function pointer management"
   homepage "https://github.com/anholt/libepoxy"
-  url "https://github.com/akihikodaki/libepoxy.git", revision: "ec54e0ff95dd98cd5d5c62b38d9ae427e4e6e747"
-  version "20220529"
+  url "https://github.com/akihikodaki/libepoxy.git", revision: "b0d6d609d64dcf71845801233d1d3680b9d50288"
+  version "20240320"
   license "MIT"
-
-  bottle do
-    root_url "https://ghcr.io/v2/quic/quic"
-    rebuild 1
-    sha256 cellar: :any, arm64_sonoma: "0861b0fb0530f0d690ebb2ed3135271b28819efcdb8c72a5330fa429c40193f2"
-  end
 
   depends_on "meson" => :build
   depends_on "ninja" => :build
   depends_on "pkg-config" => :build
   depends_on "quic/quic/angle"
+
+  bottle do
+    root_url "https://ghcr.io/v2/quic/quic"
+    sha256 cellar: :any, arm64_sonoma: "7d90d9818f893a74f854c48cb53317942fea84dcc737a1c1a9c0e12259aa0274"
+  end
 
   def install
     mkdir "build" do
@@ -106,3 +105,35 @@ class Libepoxy < Formula
     assert_match "ANGLE", shell_output("#{testpath}/test 2>&1")
   end
 end
+
+__END__
+diff --git a/meson.build b/meson.build
+index c5a589b..d0422ec 100644
+--- a/meson.build
++++ b/meson.build
+@@ -179,7 +179,7 @@ egl_dep = dependency('egl', required: false)
+ if not egl_dep.found()
+   egl_dep = cc.find_library('EGL', required: false)
+ endif
+-if not egl_dep.found() and host_machine == 'windows'
++if not egl_dep.found() and host_machine.system() == 'windows'
+   egl_dep = cc.find_library('libEGL.dll', required: false)
+ endif
+ if not egl_dep.found()
+@@ -190,7 +190,7 @@ gles2_dep = dependency('glesv2', required: false)
+ if not gles2_dep.found()
+   gles2_dep = cc.find_library('GLESv2', required: false)
+ endif
+-if not gles2_dep.found() and host_machine == 'windows'
++if not gles2_dep.found() and host_machine.system() == 'windows'
+   gles2_dep = cc.find_library('libGLESv2.dll', required: false)
+ endif
+ if not gles2_dep.found()
+@@ -201,7 +201,7 @@ gles1_dep = dependency('glesv1_cm', required: false)
+ if not gles1_dep.found()
+   gles1_dep = cc.find_library('GLESv1_CM', required: false)
+ endif
+-if not gles1_dep.found() and host_machine == 'windows'
++if not gles1_dep.found() and host_machine.system() == 'windows'
+   gles1_dep = cc.find_library('libGLESv1_CM.dll', required: false)
+ endif
