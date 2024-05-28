@@ -1,49 +1,65 @@
-# Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+# Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-2-Clause
 
 class Angle < Formula
   desc "Almost Native Graphics Layer Engine"
   homepage "https://chromium.googlesource.com/angle/angle/"
-  url "https://chromium.googlesource.com/angle/angle.git", revision: "db3b2875723b255fbf4569f6346e9bd6d1cac78e"
-  version "chromium-5682"
+  # We can not use the default git strategy as it would fail while pulling submodules.
+  # So we get the archived sources, unfortunately the archived sources do not build...
+  url "https://github.com/google/angle/archive/refs/heads/chromium/6503.zip", using: :nounzip
+  sha256 "eeef0c09322c5b8bba28ed472a67b4f662bd2aa789b020213e614816fb26c898"
+  version "chromium-6503"
   license "BSD-3-Clause"
 
   bottle do
     root_url "https://ghcr.io/v2/quic/quic"
-    rebuild 1
-    sha256 cellar: :any, arm64_sonoma: "41d2ce982c5a70b3756b3dd51a169c082ecbeb943090e5c542c63ed0ad20e5b0"
+    sha256 cellar: :any, arm64_sonoma: "f5e99a5c836e67668552409942beaff90e9cea3556e5bfa5b6154d46c023d205"
   end
 
-  depends_on "python3"
+  depends_on "python3" => :build
+  depends_on "curl" => :build
+  depends_on "git" => :build
 
   on_macos do
     # `gn gen` requires `xcodebuild` which is provided by a full regular Xcode
     depends_on :xcode => :build
   end
 
-  resource "depot_tools" do
-    url "https://chromium.googlesource.com/chromium/tools/depot_tools.git", revision: "4a7343007c7c6f45124eb4e01f8a4fddaec79a11"
+  resource "depot-tools" do
+    url "https://chromium.googlesource.com/chromium/tools/depot_tools.git", revision: "97246c4f73e6692065ea4d3c87c63641a810f064"
   end
 
-  # gn: Add install target
-  patch :DATA
-
   def install
-    resource("depot_tools").stage do
-      puts "Using depot_tools in " + Dir.pwd
-      path = PATH.new(ENV["PATH"], Dir.pwd)
-      no_auth_boto_config = ENV["HOMEBREW_NO_AUTH_BOTO_CONFIG"]
-      with_env(PATH: path, NO_AUTH_BOTO_CONFIG: no_auth_boto_config) do
-        Dir.chdir(buildpath)
-        system "python3", "scripts/bootstrap.py"
-        system "gclient", "sync"
-        system "gn",
-          "gen",
-          "--args=use_custom_libcxx=false is_component_build=false install_prefix=\"#{prefix}\"",
-          "./out"
-        system "ninja", "-C", "out", "install_angle"
-      end
-    end
+    resource("depot-tools").stage(buildpath/"depot-tools")
+    ENV.append_path "PATH", "#{buildpath}/depot-tools"
+
+    ENV["NO_AUTH_BOTO_CONFIG"] = ENV["HOMEBREW_NO_AUTH_BOTO_CONFIG"]
+
+    # Make sure private libraries can be found from lib
+    ENV.prepend "LDFLAGS", "-Wl,-rpath,#{rpath(target: libexec)}"
+
+    puts "Downloading ANGLE and its dependencies."
+    puts "This may take a while, based on your internet connection speed."
+    # We clone angle from here to avoid brew default strategy of pulling submodules
+    system "git", "clone", "https://github.com/google/angle.git", "--depth=1", "--single-branch", "--branch=chromium/6503"
+    Dir.chdir("angle")
+    system "curl", "https://raw.githubusercontent.com/quic/homebrew-quic/main/Patches/0001-gn-Add-install-target.patch",
+        "--output", "0001-gn-Add-install-target.patch"
+    system "git", "apply", "-v", "0001-gn-Add-install-target.patch"
+    # Use -headerpad_max_install_names in the build,
+    # otherwise updated load commands won't fit in the Mach-O header.
+    system "curl", "https://raw.githubusercontent.com/quic/homebrew-quic/main/Patches/0002-gn-Headerpad-config.patch",
+        "--output", "0002-gn-Headerpad-config.patch"
+    system "git", "apply", "-v", "0002-gn-Headerpad-config.patch"
+
+    # Start configuring ANGLE
+    system "python3", "scripts/bootstrap.py"
+    # This is responsible for pulling the submodules for us
+    system "gclient", "sync", "--no-history", "--shallow", "-v"
+    system "gn", "gen",
+      "--args=use_custom_libcxx=false is_component_build=false install_prefix=\"#{prefix}\"",
+      "./out"
+    system "ninja", "-j", ENV.make_jobs, "-C", "out", "install_angle"
   end
 
   test do
@@ -128,204 +144,3 @@ class Angle < Formula
     assert_match "ANGLE", shell_output("#{testpath}/test 2>&1")
   end
 end
-
-__END__
-diff --git a/BUILD.gn b/BUILD.gn
-index 8da4a02ce..d8ed82318 100644
---- a/BUILD.gn
-+++ b/BUILD.gn
-@@ -74,6 +74,9 @@ declare_args() {
-     # Use Android TLS slot to store current context.
-     angle_use_android_tls_slot = !build_with_chromium
-   }
-+
-+  # Prefix where the artifacts should be installed on the system
-+  install_prefix = ""
- }
- 
- if (angle_build_all) {
-@@ -1787,3 +1790,51 @@ group("angle_static") {
-     ":translator",
-   ]
- }
-+
-+template("install_target") {
-+  install_deps = []
-+
-+  foreach(_lib, invoker.libs) {
-+    install_deps += [ ":install_${_lib}" ]
-+
-+    source = "${root_build_dir}/${_lib}${angle_libs_suffix}${shlib_extension}"
-+
-+    action("install_${_lib}") {
-+      deps = [ ":${_lib}" ]
-+      script = "scripts/install_target.py"
-+      sources = [ source ]
-+      # This is a trick to rerun this target every time
-+      outputs = [ "${root_build_dir}/out/install_${_lib}.stamp" ]
-+      args = [
-+        "--name", _lib,
-+        "--prefix", "$install_prefix",
-+        "--libs", rebase_path(source),
-+      ]
-+    }
-+  }
-+
-+  install_deps += [ ":install_includes" ]
-+  action("install_includes") {
-+    script = "scripts/install_target.py"
-+    configs = invoker.configs
-+    # This is a trick to rerun this target every time
-+    outputs = [ "${root_build_dir}/out/install_${target_name}.stamp" ]
-+    args = [
-+      "--prefix", "$install_prefix",
-+      "{{include_dirs}}"
-+    ]
-+  }
-+
-+  group("install_${target_name}") {
-+    deps = install_deps
-+  }
-+}
-+
-+install_target("angle") {
-+  libs = [
-+    "libEGL",
-+    #"libGLESv1_CM",
-+    "libGLESv2"
-+  ]
-+  configs = [ ":includes_config" ]
-+}
-diff --git a/scripts/install_target.py b/scripts/install_target.py
-new file mode 100755
-index 000000000..28cadb0c6
---- /dev/null
-+++ b/scripts/install_target.py
-@@ -0,0 +1,127 @@
-+#! /usr/bin/env python3
-+# Copyright 2023 Google Inc.  All rights reserved.
-+# Use of this source code is governed by a BSD-style license that can be
-+# found in the LICENSE file.
-+"""Install script for ANGLE targets"""
-+
-+import argparse
-+import os
-+import shutil
-+import sys
-+from pathlib import Path
-+
-+def install2(src_list: list, dst_dir: str):
-+    """Installs a list of files or directories in `src_list` to the `install_dst_dir`"""
-+    if not os.path.exists(dst_dir):
-+        os.makedirs(dst_dir)
-+    for src in src_list:
-+        if not os.path.exists(src):
-+            raise FileNotFoundError("Failed to find {}".format(src))
-+        basename = os.path.basename(src)
-+        dst = os.path.join(dst_dir, basename)
-+        print("Installing {} to {}".format(src, dst))
-+        if os.path.isdir(src):
-+            shutil.copytree(src, dst, dirs_exist_ok=True)
-+        else:
-+            shutil.copy2(src, dst)
-+
-+PC_TEMPLATE = """prefix={prefix}
-+libdir=${{prefix}}/lib
-+includedir=${{prefix}}/include
-+
-+Name: {name}
-+Description: {description}
-+Version: {version}
-+Libs: -L${{libdir}} {link_libraries}
-+Cflags: -I${{includedir}}
-+"""
-+
-+def gen_link_libraries(libs: list):
-+    """Generates a string that can be used for the `Libs:` entry of a pkgconfig file"""
-+    link_libraries = ""
-+    for lib in libs:
-+        # Absolute paths to file names only -> libEGL.dylib
-+        basename = os.path.basename(lib)
-+        # lib name only -> libEGL
-+        libname: str = os.path.splitext(basename)[0]
-+        # name only -> EGL
-+        name = libname.strip('lib')
-+        link_libraries += '-l{}'.format(name)
-+    return link_libraries
-+
-+def gen_pkgconfig(name: str, version: str, prefix: os.path.abspath, libs: list):
-+    """Generates a pkgconfig file for the current target""" 
-+    # Remove lib from name -> EGL
-+    no_lib_name = name.strip('lib')
-+    description = "ANGLE's {}".format(no_lib_name)
-+    name_lowercase = no_lib_name.lower()
-+    link_libraries = gen_link_libraries(libs)
-+    pc_content = PC_TEMPLATE.format(
-+        name=name_lowercase,
-+        prefix=prefix,
-+        description=description,
-+        version=version,
-+        link_libraries=link_libraries)
-+    
-+    lib_pkgconfig_path = os.path.join(prefix, 'lib/pkgconfig')
-+    if not os.path.exists(lib_pkgconfig_path):
-+        os.makedirs(lib_pkgconfig_path)
-+
-+    pc_path = os.path.join(lib_pkgconfig_path, '{}.pc'.format(name_lowercase))
-+    print("Generating {}".format(pc_path))
-+    with open(pc_path, 'w+') as pc_file:
-+        pc_file.write(pc_content)
-+
-+def install(name, version, prefix: os.path.abspath, libs: list, includes: list):
-+    """Installs under `prefix`
-+    - the libraries in the `libs` list
-+    - the include directories in the `includes` list
-+    - the pkgconfig file for current target if name is set"""
-+    install2(libs, os.path.join(prefix, "lib"))
-+
-+    for include in includes:
-+        assert(os.path.isdir(include))
-+        incs = [inc.path for inc in os.scandir(include)]
-+        install2(incs, os.path.join(prefix, "include"))
-+
-+    if name:
-+        gen_pkgconfig(name, version, prefix, libs)
-+
-+def main():
-+    parser = argparse.ArgumentParser(description='Install script for ANGLE targets')
-+    parser.add_argument(
-+        '--name',
-+        help='Name of the target (e.g., EGL or GLESv2). Set it to generate a pkgconfig file',
-+    )
-+    parser.add_argument(
-+        '--version',
-+        help='SemVer of the target (e.g., 0.1.0 or 2.1)',
-+        default= '0.0.0'
-+    )
-+    parser.add_argument(
-+        '--prefix',
-+        help='Install prefix to use (e.g., out/install or /usr/local/)',
-+        default='',
-+        type=os.path.abspath
-+    )
-+    parser.add_argument(
-+        '--libs',
-+        help='List of libraries to install (e.g., libEGL.dylib or libGLESv2.so)',
-+        default=[],
-+        nargs='+',
-+        type=os.path.abspath
-+    )
-+    parser.add_argument(
-+        '-I',
-+        '--includes',
-+        help='List of include directories to install (e.g., include or ../include)',
-+        default=[],
-+        nargs='+',
-+        type=os.path.abspath
-+    )
-+
-+    args = parser.parse_args()
-+    install(args.name, args.version, args.prefix, args.libs, args.includes)
-+
-+if __name__ == '__main__':
-+    sys.exit(main())
