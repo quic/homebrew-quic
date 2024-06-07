@@ -13,6 +13,8 @@ class Angle < Formula
 
   bottle do
     root_url "https://ghcr.io/v2/quic/quic"
+    rebuild 1
+    sha256 cellar: :any, arm64_ventura: "2af2df988e7b804d436d379c1d71b4da2746406076594b6bb83c85dc3348cddd"
     sha256 cellar: :any, arm64_sonoma: "f5e99a5c836e67668552409942beaff90e9cea3556e5bfa5b6154d46c023d205"
   end
 
