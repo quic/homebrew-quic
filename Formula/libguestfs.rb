@@ -161,32 +161,35 @@ index 71115a27e..027790e4e 100644
    guestfs_int_cmd_clear_capture_errors (cmd);
  
 diff --git a/m4/guestfs-c.m4 b/m4/guestfs-c.m4
-index c6d33183d..8035a9729 100644
+index c6d33183d..44c64b6d6 100644
 --- a/m4/guestfs-c.m4
 +++ b/m4/guestfs-c.m4
-@@ -57,7 +57,7 @@ CFLAGS="$CFLAGS -fno-strict-overflow -Wno-strict-overflow"
+@@ -55,9 +55,12 @@ AC_SUBST([WERROR_CFLAGS])
+ CFLAGS="$CFLAGS -fno-strict-overflow -Wno-strict-overflow"
+ 
  dnl Work out how to specify the linker script to the linker.
++AS_CASE([$host_os],
++  [darwin*], [MAP_SCRIPT_FLAGS="-Wl,-map"],
++  [MAP_SCRIPT_FLAGS="-Wl,-M"])
  VERSION_SCRIPT_FLAGS=-Wl,--version-script=
  `/usr/bin/ld --help 2>&1 | grep -- --version-script >/dev/null` || \
 -    VERSION_SCRIPT_FLAGS="-Wl,-M -Wl,"
-+    VERSION_SCRIPT_FLAGS="-Wl,-map -Wl,"
++    VERSION_SCRIPT_FLAGS="$MAP_SCRIPT_FLAGS -Wl,"
  AC_SUBST(VERSION_SCRIPT_FLAGS)
  
  dnl Use -fvisibility=hidden by default in the library.
-diff --git a/m4/ocaml.m4 b/m4/ocaml.m4
-index fddd6a0c2..91896f386 100644
---- a/m4/ocaml.m4
-+++ b/m4/ocaml.m4
-@@ -17,6 +17,9 @@ AC_DEFUN([AC_PROG_OCAML],
-      OCAMLVERSION=`$OCAMLC -v | sed -n -e 's|.*version* *\(.*\)$|\1|p'`
-      AC_MSG_RESULT([OCaml version is $OCAMLVERSION])
-      OCAMLLIB=`$OCAMLC -where 2>/dev/null || $OCAMLC -v|tail -1|cut -d ' ' -f 4`
-+     if test "x$INSTALL_OCAMLLIB" = "x"; then
-+        INSTALL_OCAMLLIB=$OCAMLLIB
-+     fi
-      AC_MSG_RESULT([OCaml library path is $OCAMLLIB])
- 
-      AC_SUBST([OCAMLVERSION])
+diff --git a/m4/guestfs-ocaml.m4 b/m4/guestfs-ocaml.m4
+index 25b06408c..6696db5bb 100644
+--- a/m4/guestfs-ocaml.m4
++++ b/m4/guestfs-ocaml.m4
+@@ -210,3 +210,7 @@ OCAML_WARN_ERROR="-warn-error +C+D+E+F+L+M+P+S+U+V+Y+Z+X+52-3-6 -w -6"
+ AC_SUBST([OCAML_WARN_ERROR])
+ OCAML_FLAGS="-g -annot $safe_string_option"
+ AC_SUBST([OCAML_FLAGS])
++
++if test "x$INSTALL_OCAMLLIB" = "x"; then
++	INSTALL_OCAMLLIB=$OCAMLLIB
++fi
 diff --git a/ocaml/Makefile.am b/ocaml/Makefile.am
 index 63713ee68..f7621a8fa 100644
 --- a/ocaml/Makefile.am
