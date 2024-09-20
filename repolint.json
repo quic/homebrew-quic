@@ -163,7 +163,8 @@
                         "Copyright.*Qualcomm Innovation Center, Inc|©.*Qualcomm Innovation Center, Inc",
                         "SPDX-License-Identifier"
                     ],
-                    "flags": "i"
+                    "flags": "i",
+                    "succeed-on-non-existent": true
                 }
             }
         },
